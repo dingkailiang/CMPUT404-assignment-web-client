@@ -17,7 +17,6 @@
 # Do not use urllib's HTTP GET and POST mechanisms.
 # Write your own HTTP GET and POST
 # The point is to understand what you have to send and get experience with it
-
 import sys
 import socket
 import re
@@ -28,9 +27,13 @@ def help():
     print "httpclient.py [GET/POST] [URL]\n"
 
 class HTTPResponse(object):
-    def __init__(self, code=200, body=""):
+    def __init__(self, code=200,header="", body=""):
         self.code = code
+        self.header = header
         self.body = body
+    
+    def __repr__(self):
+        return self.header+"\r\n"+self.body
 
 class HTTPClient(object):
     # generator the request with given method host path and args
@@ -42,6 +45,8 @@ class HTTPClient(object):
         request += " HTTP/1.1\r\n"
         request += "Host: " + host+"\r\n"
         request += "Accept:*/*\r\n"
+        request += "User-Agent:httpclient.py\r\n"
+        request += "Connection:close\r\n"
         if body != None or method == "POST":
             request += "Content-Length: "+str(len(str(body)))+"\r\n"
             request += "Content-Type: application/x-www-form-urlencoded\r\n"
@@ -51,7 +56,7 @@ class HTTPClient(object):
         return request
         
     # get host path and port separately from url
-    def get_host_path_port(self,url):
+    def get_host_port(self,url):
         if url[0:7].lower() == "http://":
             url = url[7:]
         elif url[0:8].lower() == "https://":
@@ -64,14 +69,15 @@ class HTTPClient(object):
         for i in range(len(url)):
             if url[i] == "/" and path_index == len(url):
                 path_index = i
-            if url[i] == ":" :
+            if url[i] == ":":
                 port_index = i
-        if port_index== None:
+        if port_index== None or path_index<port_index:
             host = url[:path_index]
         else:
             host = url[:port_index]
             port = int(url[port_index+1:path_index])
-        path = url[path_index:]
+        if path_index != len(url):
+            path = url[path_index:]
         return host,path,port
 
     # connect to a socket with given host and port
@@ -84,7 +90,7 @@ class HTTPClient(object):
         return int(data.split()[1])
 
     def get_headers(self,data):
-        return data.split("\r\n\r\n")[0]
+        return data.split("\r\n\r\n")[0]+"\r\n"
         
     def get_body(self, data):
         return data.split("\r\n\r\n")[1]
@@ -106,14 +112,15 @@ class HTTPClient(object):
         code = 500
         body = ""
        
-        host,path,port = self.get_host_path_port(url)
+        host,path,port = self.get_host_port(url)
         sock = self.connect(host,port)
         request = self.make_request(mode,host,path,args)
         sock.sendall(request)
         data = self.recvall(sock)
         code = self.get_code(data)
+        header = self.get_headers(data)
         body = self.get_body(data)
-        return HTTPResponse(code, body)
+        return HTTPResponse(code,header,body)
 
 
     def GET(self, url, args=None):
