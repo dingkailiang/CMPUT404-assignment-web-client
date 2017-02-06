@@ -33,23 +33,64 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    # generator the request with given method host path and args
+    def make_request(self,method,host,path,args=None):
+        body = None
+        if args != None:
+            body = urllib.urlencode(args)
+        request = method + " " + path
+        request += " HTTP/1.1\r\n"
+        request += "Host: " + host+"\r\n"
+        request += "Accept:*/*\r\n"
+        if body != None or method == "POST":
+            request += "Content-Length: "+str(len(str(body)))+"\r\n"
+            request += "Content-Type: application/x-www-form-urlencoded\r\n"
+        request += "\r\n"
+        if body != None:
+            request += body
+        return request
+        
+    # get host path and port separately from url
+    def get_host_path_port(self,url):
+        if url[0:7].lower() == "http://":
+            url = url[7:]
+        elif url[0:8].lower() == "https://":
+            url = url[8:]
+        path_index = len(url)
+        port_index = None
+        port = 80
+        path = "/"
+        host = ""
+        for i in range(len(url)):
+            if url[i] == "/" and path_index == len(url):
+                path_index = i
+            if url[i] == ":" :
+                port_index = i
+        if port_index== None:
+            host = url[:path_index]
+        else:
+            host = url[:port_index]
+            port = int(url[port_index+1:path_index])
+        path = url[path_index:]
+        return host,path,port
 
+    # connect to a socket with given host and port
     def connect(self, host, port):
-        # use sockets!
-        return None
+        sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+        sock.connect((host,port))
+        return sock
 
     def get_code(self, data):
-        return None
+        return int(data.split()[1])
 
     def get_headers(self,data):
-        return None
-
+        return data.split("\r\n\r\n")[0]
+        
     def get_body(self, data):
-        return None
+        return data.split("\r\n\r\n")[1]
 
     # read everything from the socket
-    def recvall(self, sock):
+    def recvall(self,sock):
         buffer = bytearray()
         done = False
         while not done:
@@ -60,15 +101,26 @@ class HTTPClient(object):
                 done = not part
         return str(buffer)
 
-    def GET(self, url, args=None):
+    # send the request with give url,mode and args
+    def send_request(self,url,mode,args=None):
         code = 500
         body = ""
+       
+        host,path,port = self.get_host_path_port(url)
+        sock = self.connect(host,port)
+        request = self.make_request(mode,host,path,args)
+        sock.sendall(request)
+        data = self.recvall(sock)
+        code = self.get_code(data)
+        body = self.get_body(data)
         return HTTPResponse(code, body)
 
+
+    def GET(self, url, args=None):
+        return self.send_request(url,'GET',args)
+
     def POST(self, url, args=None):
-        code = 500
-        body = ""
-        return HTTPResponse(code, body)
+        return self.send_request(url,'POST',args)
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
